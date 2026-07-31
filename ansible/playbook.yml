@@ -3,44 +3,74 @@
   hosts: servers
   become: true
 
+  vars:
+    project_dir: /opt/projeto-korp
+
   tasks:
 
-    - name: Atualizar pacotes
+    - name: Atualizar cache do apt
       apt:
         update_cache: yes
 
-    - name: Instalar dependências
+    - name: Instalar Docker
       apt:
         name:
           - docker.io
-          - docker-compose-v2
         state: present
 
     - name: Habilitar Docker
       service:
         name: docker
-        enabled: yes
         state: started
+        enabled: yes
 
-    - name: Criar rede Docker
-      shell: docker network create korp-network || true
+    - name: Criar diretório do projeto
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: '0755'
 
-    - name: Subir containers
-      shell: |
-        cd ../
-        docker compose up -d --build
+    - name: Copiar projeto
+      copy:
+        src: ../
+        dest: "{{ project_dir }}"
 
-    - name: Esperar serviço iniciar
-      pause:
-        seconds: 15
+    - name: Subir ambiente Docker
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        build: always
+        state: present
 
-    - name: Testar endpoint
+    - name: Aguardar API iniciar
+      wait_for:
+        host: localhost
+        port: 80
+        timeout: 60
+
+    - name: Validar endpoint da API
       uri:
         url: http://localhost/projeto-korp
-        method: GET
-        return_content: yes
-      register: resultado
+        return_content: true
+      register: api_response
 
-    - name: Exibir resposta
+    - name: Exibir resposta da API
       debug:
-        var: resultado.content
+        var: api_response.json
+
+    - name: Validar Prometheus
+      uri:
+        url: http://localhost:9090/-/healthy
+      register: prometheus_response
+
+    - name: Validar Grafana
+      uri:
+        url: http://localhost:3000/api/health
+      register: grafana_response
+
+    - name: Exibir status Prometheus
+      debug:
+        var: prometheus_response.status
+
+    - name: Exibir status Grafana
+      debug:
+        var: grafana_response.json
