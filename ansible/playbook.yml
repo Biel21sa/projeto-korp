@@ -1,0 +1,46 @@
+---
+- name: Provisionar Projeto Korp
+  hosts: servers
+  become: true
+
+  tasks:
+
+    - name: Atualizar pacotes
+      apt:
+        update_cache: yes
+
+    - name: Instalar dependências
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+
+    - name: Habilitar Docker
+      service:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Criar rede Docker
+      shell: docker network create korp-network || true
+
+    - name: Subir containers
+      shell: |
+        cd ../
+        docker compose up -d --build
+
+    - name: Esperar serviço iniciar
+      pause:
+        seconds: 15
+
+    - name: Testar endpoint
+      uri:
+        url: http://localhost/projeto-korp
+        method: GET
+        return_content: yes
+      register: resultado
+
+    - name: Exibir resposta
+      debug:
+        var: resultado.content
