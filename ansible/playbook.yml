@@ -1,39 +1,12 @@
 ---
 - name: Provisionar Projeto Korp
   hosts: servers
-  become: true
+  connection: local
 
   vars:
-    project_dir: /opt/projeto-korp
+    project_dir: /mnt/c/Users/Gabriel/OneDrive/Documentos/projeto-korp
 
   tasks:
-
-    - name: Atualizar cache do apt
-      apt:
-        update_cache: yes
-
-    - name: Instalar Docker
-      apt:
-        name:
-          - docker.io
-        state: present
-
-    - name: Habilitar Docker
-      service:
-        name: docker
-        state: started
-        enabled: yes
-
-    - name: Criar diretório do projeto
-      file:
-        path: "{{ project_dir }}"
-        state: directory
-        mode: '0755'
-
-    - name: Copiar projeto
-      copy:
-        src: ../
-        dest: "{{ project_dir }}"
 
     - name: Subir ambiente Docker
       community.docker.docker_compose_v2:
@@ -62,10 +35,20 @@
         url: http://localhost:9090/-/healthy
       register: prometheus_response
 
+    - name: Aguardar Grafana iniciar
+      wait_for:
+        host: localhost
+        port: 3000
+        timeout: 120
+
     - name: Validar Grafana
       uri:
         url: http://localhost:3000/api/health
+        status_code: 200
       register: grafana_response
+      retries: 10
+      delay: 5
+      until: grafana_response.status == 200
 
     - name: Exibir status Prometheus
       debug:
